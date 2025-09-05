@@ -1,5 +1,5 @@
 workflows:
-  ios_unsigned_ipa:
+  ios_ipa_unsigned:
     name: iOS — Unsigned IPA (no codesign)
     environment:
       flutter: stable
@@ -16,8 +16,7 @@ workflows:
             flutter create .
           fi
 
-      # (اختياري) اسم التطبيق والباكدج آي دي
-      - name: Set bundle name/id
+      - name: Set bundle name/id (optional)
         script: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Market Data Analyst Pro" ios/Runner/Info.plist || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.wesam.marketdata.pro" ios/Runner/Info.plist || true
