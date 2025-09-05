@@ -5,9 +5,19 @@ workflows:
       flutter: stable
       xcode: 15.4
     scripts:
-      - name: Flutter clean & deps
+      - name: Fix line endings (LF) for iOS scripts
         script: |
+          set -e
+          brew list dos2unix || brew install dos2unix
+          find ios -type f -name "*.sh" -print0 | xargs -0 dos2unix || true
+          dos2unix ios/Flutter/* || true
+          dos2unix ios/Runner/* || true
+
+      - name: Flutter clean & precache & deps
+        script: |
+          set -e
           flutter clean
+          flutter precache --ios
           flutter pub get
 
       - name: Ensure iOS folder exists
@@ -16,37 +26,45 @@ workflows:
             flutter create .
           fi
 
-      - name: Set bundle name/id (optional)
-        script: |
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Market Data Analyst Pro" ios/Runner/Info.plist || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.wesam.marketdata.pro" ios/Runner/Info.plist || true
-
-      - name: Archive with xcodebuild (NO codesign)
+      - name: Install CocoaPods
         script: |
           set -e
-          xcodebuild -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/Runner.xcarchive \
-            DEVELOPMENT_TEAM= \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_STYLE=Manual \
-            archive
+          cd ios
+          pod install --repo-update
+          cd -
 
-      - name: Create unsigned IPA
+      # خيار 1 (المفضل): بناء IPA عبر Flutter بدون توقيع
+      - name: Build IPA (Flutter, no codesign)
         script: |
           set -e
-          APP_PATH="build/Runner.xcarchive/Products/Applications/Runner.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Runner.app not found at $APP_PATH"
-            ls -la build || true
-            exit 1
+          flutter build ipa --release --no-codesign
+
+      # خيار 2 (احتياطي): بناء بالأكسكود مباشرة بدون توقيع
+      # - name: Archive with xcodebuild (NO codesign)
+      #   script: |
+      #     set -e
+      #     xcodebuild -workspace ios/Runner.xcworkspace \
+      #       -scheme Runner \
+      #       -configuration Release \
+      #       -sdk iphoneos \
+      #       -destination 'generic/platform=iOS' \
+      #       -archivePath build/Runner.xcarchive \
+      #       DEVELOPMENT_TEAM= \
+      #       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_STYLE=Manual \
+      #       archive
+
+      - name: Package unsigned IPA (if using xcodebuild path)
+        script: |
+          set -e
+          if [ -d "build/Runner.xcarchive/Products/Applications/Runner.app" ]; then
+            rm -rf Payload
+            mkdir -p Payload
+            cp -R build/Runner.xcarchive/Products/Applications/Runner.app Payload/
+            zip -r MarketDataAnalystPro-unsigned.ipa Payload
           fi
-          rm -rf Payload
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          cd Payload && zip -r ../MarketDataAnalystPro-unsigned.ipa . && cd ..
 
     artifacts:
+      # ناتج Flutter
+      - build/ios/ipa/*.ipa
+      # لو استخدمت مسار xcodebuild
       - MarketDataAnalystPro-unsigned.ipa
