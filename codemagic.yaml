@@ -1,73 +1,53 @@
 workflows:
-  ios_ipa_unsigned:
+  ios_unsigned_ipa:
     name: iOS — Unsigned IPA (no codesign)
     environment:
       flutter: stable
       xcode: 15.4
-      cocoapods: default
-    cache:
-      cache_paths:
-        - ~/.pub-cache
-        - ios/Pods
     scripts:
-      - name: Flutter pub get
+      - name: Flutter clean & deps
         script: |
-          set -e
+          flutter clean
           flutter pub get
 
       - name: Ensure iOS folder exists
         script: |
-          set -e
           if [ ! -d ios ]; then
             flutter create .
           fi
 
-      - name: Set identifiers + min iOS
+      # (اختياري) اسم التطبيق والباكدج آي دي
+      - name: Set bundle name/id
+        script: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Market Data Analyst Pro" ios/Runner/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.wesam.marketdata.pro" ios/Runner/Info.plist || true
+
+      - name: Archive with xcodebuild (NO codesign)
         script: |
           set -e
-          BUNDLE_ID=com.wesam.mda.pro
-          DISPLAY_NAME="Market Data Pro"
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Runner.xcarchive \
+            DEVELOPMENT_TEAM= \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_STYLE=Manual \
+            archive
 
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/Runner/Info.plist || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $DISPLAY_NAME" ios/Runner/Info.plist || true
-          plutil -replace MinimumOSVersion -string "13.0" ios/Runner/Info.plist || true
-
-          # تأكيد iOS 13 في Podfile
-          if grep -q "platform :ios" ios/Podfile; then
-            sed -i '' "s/platform :ios, '.*'/platform :ios, '13.0'/" ios/Podfile
-          else
-            echo "platform :ios, '13.0'" | cat - ios/Podfile > /tmp/Podfile && mv /tmp/Podfile ios/Podfile
-          fi
-
-      - name: Clean & install CocoaPods
+      - name: Create unsigned IPA
         script: |
           set -e
-          cd ios
-          rm -rf Pods Podfile.lock
-          pod repo update
-          pod install
-          cd ..
-
-      - name: Build iOS app (no codesign)
-        script: |
-          set -e
-          flutter clean
-          # يبني .app فقط بدون توقيع (بدون خطوة Archive)
-          flutter build ios --release --no-codesign
-          ls -la build/ios/iphoneos || true
-
-      - name: Package to unsigned IPA
-        script: |
-          set -e
-          APP_PATH="build/ios/iphoneos/Runner.app"
+          APP_PATH="build/Runner.xcarchive/Products/Applications/Runner.app"
           if [ ! -d "$APP_PATH" ]; then
-            echo "Runner.app not found under build/ios/iphoneos"
+            echo "Runner.app not found at $APP_PATH"
+            ls -la build || true
             exit 1
           fi
-          rm -rf Payload Runner-unsigned.ipa
+          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          zip -r Runner-unsigned.ipa Payload
+          cd Payload && zip -r ../MarketDataAnalystPro-unsigned.ipa . && cd ..
 
     artifacts:
-      - Runner-unsigned.ipa
+      - MarketDataAnalystPro-unsigned.ipa
