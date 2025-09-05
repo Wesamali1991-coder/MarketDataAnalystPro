@@ -1,0 +1,6 @@
+*.sh        text eol=lf
+*.rb        text eol=lf
+*.podspec   text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.plist     text eol=lf
