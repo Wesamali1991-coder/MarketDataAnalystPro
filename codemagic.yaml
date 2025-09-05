@@ -32,7 +32,7 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $DISPLAY_NAME" ios/Runner/Info.plist || true
           plutil -replace MinimumOSVersion -string "13.0" ios/Runner/Info.plist || true
 
-          # iOS 13 في Podfile
+          # تأكيد iOS 13 في Podfile
           if grep -q "platform :ios" ios/Podfile; then
             sed -i '' "s/platform :ios, '.*'/platform :ios, '13.0'/" ios/Podfile
           else
@@ -48,29 +48,26 @@ workflows:
           pod install
           cd ..
 
-      - name: Build IPA (Flutter, no codesign)
+      - name: Build iOS app (no codesign)
         script: |
           set -e
           flutter clean
-          # يبني IPA مباشرة بدون توقيع ويضعها في build/ios/ipa/
-          flutter build ipa --release --no-codesign
+          # يبني .app فقط بدون توقيع (بدون خطوة Archive)
+          flutter build ios --release --no-codesign
+          ls -la build/ios/iphoneos || true
 
-      - name: Collect IPA
+      - name: Package to unsigned IPA
         script: |
           set -e
-          ls -la build/ios || true
-          ls -la build/ios/ipa || true
-          # عادة يكون الاسم Runner.ipa
-          if [ -f build/ios/ipa/Runner.ipa ]; then
-            cp build/ios/ipa/Runner.ipa Runner-unsigned.ipa
-          else
-            # لو تغيّر الاسم، خذه أول ipa
-            IPA_PATH=$(ls build/ios/ipa/*.ipa | head -n 1)
-            if [ -z "$IPA_PATH" ]; then
-              echo "No IPA found under build/ios/ipa"; exit 1
-            fi
-            cp "$IPA_PATH" Runner-unsigned.ipa
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found under build/ios/iphoneos"
+            exit 1
           fi
+          rm -rf Payload Runner-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r Runner-unsigned.ipa Payload
 
     artifacts:
       - Runner-unsigned.ipa
